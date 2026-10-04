@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>修仙學堂：知識對決</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        /* Theme: Dark Ink Wash / Cultivation */
+        body { 
+            background-color: #121212; 
+            color: #e5e7eb; 
+            font-family: 'Noto Serif TC', 'PMingLiU', serif; 
+            background-image: 
+                radial-gradient(circle at 50% 0%, #2a2a2a 0%, transparent 70%),
+                linear-gradient(0deg, #0a0a0a 0%, #1a1a1a 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .cultivation-border {
+            border: 2px solid #4a4036;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0,0,0,0.5);
+            background: linear-gradient(135deg, #2c251f 0%, #1f1a16 100%);
+        }
+
+        .gold-text {
+            color: #e8c37b;
+            text-shadow: 0 0 5px rgba(232, 195, 123, 0.3);
+        }
+
+        .jade-text {
+            color: #7bcea8;
+            text-shadow: 0 0 5px rgba(123, 206, 168, 0.3);
+        }
+
+        .blood-text {
+            color: #e55a5a;
+        }
+
+        .btn-action {
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-action:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(232, 195, 123, 0.2);
+            border-color: #e8c37b;
+        }
+        .btn-action:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+        .btn-action:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(100%);
+        }
+
+        .health-bar-container {
+            background-color: #333;
+            border: 1px solid #000;
+            border-radius: 4px;
+            overflow: hidden;
+            height: 12px;
+            width: 100%;
+        }
+        .health-bar {
+            background: linear-gradient(90deg, #a02020 0%, #e55a5a 100%);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .mp-bar {
+            background: linear-gradient(90deg, #2050a0 0%, #5a9ae5 100%);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #4a4036; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #e8c37b; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="module" data-type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 偵測是否在預覽環境
+        const isLocalEnv = typeof __firebase_config !== 'undefined';
+
+        // ★★★ 準備上傳至 GITHUB 前的必做事項 ★★★
+        // 1. 到 https://console.firebase.google.com/ 免費建立一個專案
+        // 2. 建立 Web 應用程式 (</>)，取得你的 firebaseConfig
+        // 3. 在左側選單開啟 Firestore Database (以測試模式建立)
+        // 4. 在左側選單開啟 Authentication (啟用 Anonymous 匿名登入)
+        // 5. 將取得的 config 覆蓋下方的設定：
+        
+        const myOwnFirebaseConfig = {
+            apiKey: "AIzaSyCw9WEpGBgKSVJqczskqmo5M0iejdPCxYQ",
+            authDomain: "cultivation-game-v1-a175d.firebaseapp.com",
+            projectId: "cultivation-game-v1-a175d",
+            storageBucket: "cultivation-game-v1-a175d.firebasestorage.app",
+            messagingSenderId: "695756082029",
+            appId: "1:695756082029:web:9aab61a1df09dd12f46864",
+            measurementId: "G-KC30C39X4D"
+        };
+
+        const appId = isLocalEnv ? __app_id : 'my-cultivation-game';
+        const firebaseConfig = isLocalEnv ? JSON.parse(__firebase_config) : myOwnFirebaseConfig;
+        const initialAuthToken = isLocalEnv ? __initial_auth_token : null;
+
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (e) {
+            console.error("Firebase init error:", e);
+        }
+
+        // --- Game Constants & Data ---
+        const MANUALS = [
+            { id: 'm1', name: '《長生訣》', desc: '增加氣血上限 50 點，獲得【療傷】技能', type: 'hp', value: 50, skill: 'heal', icon: 'fa-heart' },
+            { id: 'm2', name: '《九陽神功》', desc: '增加真氣上限 30 點，每回合回復真氣', type: 'mp', value: 30, skill: 'regen', icon: 'fa-fire' },
+            { id: 'm3', name: '《獨孤九劍》', desc: '增加臂力(攻擊) 15 點，解鎖【萬劍歸宗】必殺技', type: 'atk', value: 15, skill: 'ultimate', icon: 'fa-khanda' },
+            { id: 'm4', name: '《金鐘罩》', desc: '增加根骨(防禦) 15 點', type: 'def', value: 15, skill: null, icon: 'fa-shield-halved' },
+            { id: 'm5', name: '《凌波微步》', desc: '增加身法(閃避) 15 點', type: 'spd', value: 15, skill: null, icon: 'fa-wind' },
+            { id: 'm6', name: '《五毒秘傳》', desc: '解鎖【施毒】技能，使對手持續扣血', type: 'special', value: 0, skill: 'poison', icon: 'fa-skull' },
+        ];
+
+        const BASE_STATS = {
+            hp: 100, maxHp: 100,
+            mp: 20, maxMp: 20,
+            atk: 10, def: 5, spd: 5,
+            skills: []
+        };
+
+        // Make Firebase available globally for React components
+        window.GameDB = { db, auth, collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp, appId, initialAuthToken };
+        window.MANUALS = MANUALS;
+        window.BASE_STATS = BASE_STATS;
+    </script>
+
+    <script type="text/babel" data-type="module">
+        const { useState, useEffect, useRef, useCallback } = React;
+        const { db, auth, collection, doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp, appId, initialAuthToken } = window.GameDB;
+
+        // Base path for public data as per instructions
+        const getBasePath = (collectionName) => `artifacts/${appId}/public/data/${collectionName}`;
+
+        // --- Helper Components ---
+        const Modal = ({ isOpen, title, children, onClose }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center z-50 p-4 fade-in">
+                    <div className="cultivation-border p-6 max-w-md w-full relative">
+                        {onClose && <button onClick={onClose} className="absolute top-2 right-4 text-gray-400 hover:text-white"><i className="fas fa-times"></i></button>}
+                        <h2 className="text-2xl gold-text text-center mb-4 border-b border-[#4a4036] pb-2">{title}</h2>
+                        {children}
+                    </div>
+                </div>
+            );
+        };
+
+        const Toast = ({ message, type = 'info' }) => {
+            const color = type === 'error' ? 'bg-red-900' : type === 'success' ? 'bg-green-900' : 'bg-[#4a4036]';
+            return (
+                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 ${color} text-white px-6 py-3 rounded shadow-lg border border-[#e8c37b] z-50 fade-in`}>
+                    {message}
+                </div>
+            );
+        };
+
+        // --- Main App Component ---
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [role, setRole] = useState(null); // 'teacher' or 'student'
+            const [loading, setLoading] = useState(true);
+            const [toast, setToast] = useState(null);
+
+            const showToast = (msg, type) => {
+                setToast({ msg, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            useEffect(() => {
+                const initAuth = async () => {
+                    try {
+                        if (initialAuthToken) {
+                            await window.signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await window.signInAnonymously(auth);
+                        }
+                        
+                        window.onAuthStateChanged(auth, (currentUser) => {
+                            setUser(currentUser);
+                            setLoading(false);
+                        });
+                    } catch (err) {
+                        console.error("Auth error:", err);
+                        showToast("系統認證失敗", "error");
+                        setLoading(false);
+                    }
+                };
+                // Use global functions due to module scope constraints in this environment
+                window.signInAnonymously = window.signInAnonymously || (async (a) => await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js").then(m => m.signInAnonymously(a)));
+                window.signInWithCustomToken = window.signInWithCustomToken || (async (a, t) => await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js").then(m => m.signInWithCustomToken(a, t)));
+                window.onAuthStateChanged = window.onAuthStateChanged || ((a, cb) => import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js").then(m => m.onAuthStateChanged(a, cb)));
+                
+                initAuth();
+            }, []);
+
+            if (loading) return <div className="flex justify-center items-center h-screen gold-text text-2xl"><i className="fas fa-yin-yang fa-spin mr-2"></i> 凝聚真氣中...</div>;
+
+            return (
+                <div className="container mx-auto px-4 py-8 max-w-4xl">
+                    {toast && <Toast message={toast.msg} type={toast.type} />}
+                    
+                    {!role && (
+                        <div className="flex flex-col items-center justify-center min-h-[80vh] fade-in text-center">
+                            <i className="fas fa-dragon text-6xl gold-text mb-6"></i>
+                            <h1 className="text-4xl md:text-6xl font-bold gold-text mb-4 tracking-widest">修仙學堂</h1>
+                            <p className="text-xl text-gray-400 mb-12">知識即力量，答題以證道</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-lg">
+                                <button onClick={() => setRole('student')} className="cultivation-border p-8 flex flex-col items-center hover:bg-[#2a2520] transition group">
+                                    <i className="fas fa-user-graduate text-5xl mb-4 group-hover:text-[#7bcea8] transition"></i>
+                                    <span className="text-2xl">我是弟子 (學生)</span>
+                                    <span className="text-sm text-gray-500 mt-2">輸入房間號，參與歷練</span>
+                                </button>
+                                <button onClick={() => setRole('teacher')} className="cultivation-border p-8 flex flex-col items-center hover:bg-[#2a2520] transition group">
+                                    <i className="fas fa-chalkboard-teacher text-5xl mb-4 group-hover:text-[#e8c37b] transition"></i>
+                                    <span className="text-2xl">我是宗主 (老師)</span>
+                                    <span className="text-sm text-gray-500 mt-2">創建秘境，設定考驗</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {role === 'teacher' && <TeacherApp user={user} showToast={showToast} onBack={() => setRole(null)} />}
+                    {role === 'student' && <StudentApp user={user} showToast={showToast} onBack={() => setRole(null)} />}
+                </div>
+            );
+        };
+
+        // --- Teacher Components ---
+        const TeacherApp = ({ user, showToast, onBack }) => {
+            const [view, setView] = useState('dashboard'); // dashboard, createSet, manageRoom
+            const [questionSets, setQuestionSets] = useState([]);
+            const [currentRoomId, setCurrentRoomId] = useState(null);
+
+            useEffect(() => {
+                if (!user) return;
+                fetchQuestionSets();
+            }, [user]);
+
+            const fetchQuestionSets = async () => {
+                const q = query(collection(db, getBasePath('questionSets')), where('creatorId', '==', user.uid));
+                try {
+                    const snapshot = await getDocs(q);
+                    const sets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setQuestionSets(sets);
+                } catch (err) {
+                    console.error("Error fetching sets:", err);
+                    showToast("載入題庫失敗", "error");
+                }
+            };
+
+            const handleCreateRoom = async (setId) => {
+                const roomCode = Math.floor(1000 + Math.random() * 9000).toString(); // 4 digit code
+                const roomRef = doc(collection(db, getBasePath('rooms')));
+                try {
+                    await setDoc(roomRef, {
+                        code: roomCode,
+                        setId: setId,
+                        hostId: user.uid,
+                        phase: 'lobby', // lobby, answering, battling, finished
+                        createdAt: serverTimestamp(),
+                        logs: ['秘境開啟，等待弟子進入...']
+                    });
+                    setCurrentRoomId(roomRef.id);
+                    setView('manageRoom');
+                    showToast(`房間創建成功！房號：${roomCode}`, "success");
+                } catch (err) {
+                    console.error(err);
+                    showToast("創建房間失敗", "error");
+                }
+            };
+
+            if (view === 'dashboard') {
+                return (
+                    <div className="fade-in">
+                        <div className="flex justify-between items-center mb-8 border-b border-[#4a4036] pb-4">
+                            <button onClick={onBack} className="text-gray-400 hover:text-white"><i className="fas fa-arrow-left mr-2"></i>返回</button>
+                            <h2 className="text-3xl gold-text">宗主閣</h2>
+                            <button onClick={() => setView('createSet')} className="bg-[#4a4036] hover:bg-[#5a5046] px-4 py-2 rounded text-white btn-action border border-[#e8c37b]">
+                                <i className="fas fa-plus mr-2"></i>編寫新卷宗
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {questionSets.length === 0 ? (
+                                <div className="col-span-full text-center text-gray-500 py-12 cultivation-border">
+                                    尚無卷宗，請先編寫題目。
+                                </div>
+                            ) : (
+                                questionSets.map(set => (
+                                    <div key={set.id} className="cultivation-border p-6 flex flex-col justify-between">
+                                        <div>
+                                            <h3 className="text-xl gold-text font-bold mb-2">{set.title}</h3>
+                                            <p className="text-gray-400 text-sm mb-4">共 {set.questions?.length || 0} 題</p>
+                                        </div>
+                                        <button onClick={() => handleCreateRoom(set.id)} className="w-full bg-[#3a5a40] hover:bg-[#4a6a50] py-2 rounded text-white btn-action font-bold tracking-wider">
+                                            開啟秘境 (建立房間)
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (view === 'createSet') {
+                return <TeacherCreateSet user={user} showToast={showToast} onCancel={() => setView('dashboard')} onSave={() => { setView('dashboard'); fetchQuestionSets(); }} />;
+            }
+
+            if (view === 'manageRoom') {
+                return <TeacherRoomManager roomId={currentRoomId} user={user} showToast={showToast} onExit={() => { setView('dashboard'); setCurrentRoomId(null); }} />;
+            }
+        };
+
+        const TeacherCreateSet = ({ user, showToast, onCancel, onSave }) => {
+            const [title, setTitle] = useState('');
+            const [questions, setQuestions] = useState([{ question: '', options: ['', '', '', ''], correctIndex: 0 }]);
+            
+            const fileInputRef = useRef(null);
+
+            const addQuestion = () => setQuestions([...questions, { question: '', options: ['', '', '', ''], correctIndex: 0 }]);
+            
+            const updateQuestion = (index, field, value) => {
+                const newQs = [...questions];
+                newQs[index][field] = value;
+                setQuestions(newQs);
+            };
+
+            const updateOption = (qIndex, oIndex, value) => {
+                const newQs = [...questions];
+                newQs[qIndex].options[oIndex] = value;
+                setQuestions(newQs);
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const data = evt.target.result;
+                        const workbook = window.XLSX.read(data, {type: 'binary'});
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        
+                        // Convert to array of arrays
+                        const json = window.XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                        
+                        const importedQuestions = [];
+                        // Start from index 1 assuming row 0 is header: [題目, 選項1, 選項2, 選項3, 選項4, 正確答案(1-4)]
+                        for(let i = 1; i < json.length; i++) { 
+                            const row = json[i];
+                            // Check if row has enough data (at least question, 4 options, and correct index)
+                            if (row && row.length >= 6 && row[0]) {
+                                const correctAns = parseInt(row[5]);
+                                const correctIndex = (isNaN(correctAns) || correctAns < 1 || correctAns > 4) ? 0 : correctAns - 1;
+                                
+                                importedQuestions.push({
+                                    question: String(row[0] || ''),
+                                    options: [String(row[1] || ''), String(row[2] || ''), String(row[3] || ''), String(row[4] || '')],
+                                    correctIndex: correctIndex
+                                });
+                            }
+                        }
+                        
+                        if (importedQuestions.length > 0) {
+                            setQuestions(importedQuestions);
+                            showToast(`成功從 Excel 匯入 ${importedQuestions.length} 題！`, "success");
+                        } else {
+                            showToast("無法讀取題目，請確保格式正確 (首行為標題，A~F欄位)", "error");
+                        }
+                    } catch (err) {
+                        console.error("Excel parsing error:", err);
+                        showToast("解析 Excel 失敗，請確定檔案未損壞", "error");
+                    }
+                    // Reset input
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            const handleSave = async () => {
+                if (!title.trim()) return showToast("請輸入卷宗標題", "error");
+                // Validation
+                for (let q of questions) {
+                    if (!q.question.trim() || q.options.some(o => !o.trim())) {
+                        return showToast("請填寫完整所有題目與選項", "error");
+                    }
+                }
+
+                try {
+                    await addDoc(collection(db, getBasePath('questionSets')), {
+                        title,
+                        questions,
+                        creatorId: user.uid,
+                        createdAt: serverTimestamp()
+                    });
+                    showToast("卷宗儲存成功", "success");
+                    onSave();
+                } catch (err) {
+                    console.error(err);
+                    showToast("儲存失敗", "error");
+                }
+            };
+
+            return (
+                <div className="fade-in cultivation-border p-6">
+                    <h2 className="text-2xl gold-text mb-6">編寫新卷宗 (題目集)</h2>
+                    
+                    {}
+                    <div className="mb-6 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-[#2a2520] p-4 rounded border border-[#4a4036]">
+                        <div>
+                            <h3 className="gold-text font-bold mb-1"><i className="fas fa-file-excel mr-2"></i>批次匯入題目</h3>
+                            <p className="text-sm text-gray-400">格式：首行為標題。A欄：題目 / B~E欄：選項1~4 / F欄：正確答案(輸入1~4)。</p>
+                        </div>
+                        <div>
+                            <input 
+                                type="file" 
+                                accept=".xlsx, .xls, .csv" 
+                                className="hidden" 
+                                ref={fileInputRef}
+                                onChange={handleFileUpload}
+                            />
+                            <button 
+                                onClick={() => fileInputRef.current.click()} 
+                                className="bg-[#2050a0] hover:bg-[#3060b0] px-4 py-2 rounded text-white btn-action border border-[#5a9ae5] whitespace-nowrap"
+                            >
+                                <i className="fas fa-upload mr-2"></i>上傳 Excel/CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <input 
+                        className="w-full bg-[#1a1a1a] border border-[#4a4036] rounded p-3 mb-6 text-white focus:outline-none focus:border-[#e8c37b]"
+                        placeholder="輸入卷宗標題 (例：第一章 - 基礎陣法)"
+                        value={title} onChange={e => setTitle(e.target.value)}
+                    />
+
+                    {questions.map((q, qIndex) => (
+                        <div key={qIndex} className="mb-8 p-4 border border-[#3a3026] rounded bg-[#2a2520]">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="gold-text font-bold">第 {qIndex + 1} 題</h3>
+                                {questions.length > 1 && (
+                                    <button onClick={() => setQuestions(questions.filter((_, i) => i !== qIndex))} className="text-red-400 hover:text-red-300"><i className="fas fa-trash"></i></button>
+                                )}
+                            </div>
+                            <textarea 
+                                className="w-full bg-[#1a1a1a] border border-[#4a4036] rounded p-3 mb-4 text-white focus:outline-none focus:border-[#e8c37b]"
+                                placeholder="題目內容..."
+                                value={q.question} onChange={e => updateQuestion(qIndex, 'question', e.target.value)}
+                            />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {q.options.map((opt, oIndex) => (
+                                    <div key={oIndex} className="flex items-center">
+                                        <input 
+                                            type="radio" 
+                                            name={`correct-${qIndex}`} 
+                                            checked={q.correctIndex === oIndex}
+                                            onChange={() => updateQuestion(qIndex, 'correctIndex', oIndex)}
+                                            className="mr-3 accent-[#e8c37b]"
+                                        />
+                                        <input 
+                                            className={`w-full bg-[#1a1a1a] border rounded p-2 text-white focus:outline-none ${q.correctIndex === oIndex ? 'border-[#7bcea8]' : 'border-[#4a4036]'}`}
+                                            placeholder={`選項 ${oIndex + 1}`}
+                                            value={opt} onChange={e => updateOption(qIndex, oIndex, e.target.value)}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className="flex justify-between mt-6">
+                        <button onClick={addQuestion} className="text-[#e8c37b] hover:text-white transition border border-[#e8c37b] px-4 py-2 rounded">
+                            <i className="fas fa-plus mr-2"></i>新增題目
+                        </button>
+                        <div>
+                            <button onClick={onCancel} className="text-gray-400 hover:text-white mr-4">取消</button>
+                            <button onClick={handleSave} className="bg-[#e8c37b] text-black px-6 py-2 rounded font-bold hover:bg-yellow-400 transition">
+                                儲存卷宗
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const TeacherRoomManager = ({ roomId, user, showToast, onExit }) => {
+            const [room, setRoom] = useState(null);
+            const [players, setPlayers] = useState([]);
+            const [battles, setBattles] = useState([]); // 新增對戰狀態監聽
+            
+            useEffect(() => {
+                if (!roomId) return;
+                
+                // Listen to Room state
+                const unsubscribeRoom = onSnapshot(doc(db, getBasePath('rooms'), roomId), (doc) => {
+                    if (doc.exists()) setRoom({ id: doc.id, ...doc.data() });
+                }, (err) => console.error("Room listen error:", err));
+
+                // Listen to Players in Room
+                const qPlayers = query(collection(db, getBasePath('rooms'), roomId, 'players'));
+                const unsubscribePlayers = onSnapshot(qPlayers, (snapshot) => {
+                    const pList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setPlayers(pList);
+                }, (err) => console.error("Players listen error:", err));
+
+                // Listen to Battles in Room (修復對戰回合無法推進的問題)
+                const qBattles = query(collection(db, getBasePath('rooms'), roomId, 'battles'));
+                const unsubscribeBattles = onSnapshot(qBattles, (snapshot) => {
+                    const bList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setBattles(bList);
+                }, (err) => console.error("Battles listen error:", err));
+
+                return () => { unsubscribeRoom(); unsubscribePlayers(); unsubscribeBattles(); };
+            }, [roomId]);
+
+            // --- Host Game Logic ---
+            // This is crucial: The teacher's client acts as the server to coordinate phases and battles.
+            
+            const updateRoomPhase = async (newPhase) => {
+                try {
+                    await updateDoc(doc(db, getBasePath('rooms'), roomId), { 
+                        phase: newPhase,
+                        logs: [...(room.logs || []), `系統：秘境進入【${newPhase === 'answering' ? '修煉期' : newPhase === 'battling' ? '武林大會' : '結算'}】`]
+                    });
+                } catch (err) {
+                    showToast("切換階段失敗", "error");
+                }
+            };
+
+            const forceFinishRoom = async () => {
+                if(confirm("確定要強制結束秘境嗎？這會中止所有弟子的進度並直接結算成績。")) {
+                    await updateDoc(doc(db, getBasePath('rooms'), roomId), { phase: 'finished' });
+                }
+            };
+            
+            const handleExit = () => {
+                if (room?.phase === 'battling' && !confirm("武林大會正在進行中！離開此畫面將導致戰鬥系統暫停，確定要離開嗎？")) {
+                    return;
+                }
+                onExit();
+            };
+
+            const exportCSV = () => {
+                let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // UTF-8 BOM
+                csvContent += "名字,答對題數,最終狀態,分數(存活排名估算)\n";
+                
+                // Sort by who is alive, then by correct answers
+                const sortedPlayers = [...players].sort((a, b) => {
+                    if(a.status === 'dead' && b.status !== 'dead') return 1;
+                    if(a.status !== 'dead' && b.status === 'dead') return -1;
+                    return b.correctCount - a.correctCount;
+                });
+
+                sortedPlayers.forEach((p, index) => {
+                    const score = p.status !== 'dead' ? 100 : (players.length - index) * 10;
+                    const row = `"${p.name}",${p.correctCount},${p.status === 'dead' ? '戰敗' : '存活'},${score}`;
+                    csvContent += row + "\n";
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `修仙學堂成績_${room.code}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            // Automatic Battle Pairing and Resolution Loop
+            useEffect(() => {
+                if (!room || room.phase !== 'battling' || room.hostId !== user.uid) return;
+
+                // This effect runs whenever players state changes during 'battling' phase.
+                // We check if we need to pair players or resolve turns.
+                
+                const processBattles = async () => {
+                    const alivePlayers = players.filter(p => p.status !== 'dead');
+                    
+                    // 1. Check win condition
+                    if (alivePlayers.length <= 1 && players.length > 0) {
+                        const msg = alivePlayers.length === 1 ? `大會結束！【${alivePlayers[0].name}】力壓群雄，成為武林盟主！` : "大會結束！同歸於盡！";
+                        await updateDoc(doc(db, getBasePath('rooms'), roomId), { 
+                            phase: 'finished',
+                            logs: [...(room.logs || []), msg]
+                        });
+                        return;
+                    }
+
+                    // 2. Pair waiting players
+                    const waitingPlayers = alivePlayers.filter(p => p.status === 'waiting');
+                    if (waitingPlayers.length >= 2) {
+                        // Simple pairing: take pairs from the list
+                        for (let i = 0; i < Math.floor(waitingPlayers.length / 2) * 2; i += 2) {
+                            const p1 = waitingPlayers[i];
+                            const p2 = waitingPlayers[i+1];
+                            const battleId = `battle_${Date.now()}_${i}`;
+                            
+                            // Create battle doc
+                            await setDoc(doc(db, getBasePath('rooms'), roomId, 'battles', battleId), {
+                                p1Id: p1.id, p2Id: p2.id,
+                                p1Name: p1.name, p2Name: p2.name,
+                                p1Action: null, p2Action: null,
+                                turn: 1, log: []
+                            });
+
+                            // Update players to battling state
+                            await updateDoc(doc(db, getBasePath('rooms'), roomId, 'players', p1.id), { status: 'battling', currentBattleId: battleId });
+                            await updateDoc(doc(db, getBasePath('rooms'), roomId, 'players', p2.id), { status: 'battling', currentBattleId: battleId });
+                        }
+                    }
+
+                    // 3. Resolve turns for active battles
+                    // 使用即時更新的 battles 狀態，確保回合順利結算
+                    for (let bData of battles) {
+                        if (bData.p1Action && bData.p2Action) {
+                            // Both have submitted actions! Resolve turn.
+                            await resolveBattleTurn(roomId, bData.id, bData, players);
+                        }
+                    }
+                };
+
+                // Debounce processing slightly to avoid rapid loops during multi-writes
+                const timeoutId = setTimeout(processBattles, 1000);
+                return () => clearTimeout(timeoutId);
+
+            }, [players, room?.phase, battles]); // 將 battles 加入依賴列陣
+
+            // Turn Resolution Logic (The core game mechanics)
+            const resolveBattleTurn = async (roomId, battleId, battleData, currentPlayers) => {
+                const p1 = currentPlayers.find(p => p.id === battleData.p1Id);
+                const p2 = currentPlayers.find(p => p.id === battleData.p2Id);
+                if (!p1 || !p2) return; // Something went wrong
+
+                let logEntry = `第 ${battleData.turn} 回合: `;
+                let p1NewHp = p1.hp, p1NewMp = p1.mp;
+                let p2NewHp = p2.hp, p2NewMp = p2.mp;
+
+                // Action parsing
+                const a1 = battleData.p1Action;
+                const a2 = battleData.p2Action;
+
+                // Passive effects (MP Regen)
+                if (p1.skills?.includes('regen')) p1NewMp = Math.min(p1.maxMp, p1NewMp + 5);
+                if (p2.skills?.includes('regen')) p2NewMp = Math.min(p2.maxMp, p2NewMp + 5);
+
+                // Calculate Actions
+                const calculateDamage = (attacker, defender, actAttack, actDefend) => {
+                    // Check Dodge
+                    if (actDefend.type === 'dodge') {
+                        const dodgeChance = Math.min(0.8, defender.spd * 0.05); // Max 80% dodge
+                        if (Math.random() < dodgeChance) {
+                            return { dmg: 0, text: `【${defender.name}】身法靈活，閃避了攻擊！` };
+                        }
+                    }
+                    
+                    let baseDmg = 0;
+                    if (actAttack.type === 'attack') baseDmg = attacker.atk;
+                    if (actAttack.type === 'ultimate') {
+                         baseDmg = attacker.atk * 2.5;
+                         // MP deduction is handled client side before sending action, or we trust client. 
+                         // For robustness, should check here, but simplified for prototype.
+                    }
+
+                    if (baseDmg > 0) {
+                        let actualDmg = baseDmg;
+                        if (actDefend.type === 'defend') {
+                            actualDmg = Math.max(1, baseDmg - defender.def);
+                            return { dmg: actualDmg, text: `【${defender.name}】運功抵擋，受到 ${actualDmg} 點傷害。` };
+                        } else {
+                            actualDmg = Math.max(1, baseDmg - (defender.def * 0.3)); // Base slight defense
+                            return { dmg: actualDmg, text: `造成了 ${Math.floor(actualDmg)} 點傷害。` };
+                        }
+                    }
+                    return { dmg: 0, text: '' };
+                };
+
+                // Execute P1 action against P2
+                let p1Log = '';
+                if (a1.type === 'attack' || a1.type === 'ultimate') {
+                    p1Log = `【${p1.name}】使出${a1.type === 'ultimate'?'必殺技':'普攻'}。`;
+                    const res = calculateDamage(p1, p2, a1, a2);
+                    p2NewHp -= res.dmg;
+                    p1Log += res.text;
+                } else if (a1.type === 'heal') {
+                    const healAmt = 30;
+                    p1NewHp = Math.min(p1.maxHp, p1NewHp + healAmt);
+                    p1Log = `【${p1.name}】運轉長生訣，恢復 ${healAmt} 氣血。`;
+                } else if (a1.type === 'gather') {
+                     p1NewMp = Math.min(p1.maxMp, p1NewMp + 15);
+                     p1Log = `【${p1.name}】聚氣凝神，恢復真氣。`;
+                }
+
+                // Execute P2 action against P1
+                let p2Log = '';
+                // Only act if not dead from P1's attack (simplified initiative: simultaneous resolution basically)
+                if (a2.type === 'attack' || a2.type === 'ultimate') {
+                    p2Log = `【${p2.name}】使出${a2.type === 'ultimate'?'必殺技':'普攻'}。`;
+                    const res = calculateDamage(p2, p1, a2, a1);
+                    p1NewHp -= res.dmg;
+                    p2Log += res.text;
+                } else if (a2.type === 'heal') {
+                    const healAmt = 30;
+                    p2NewHp = Math.min(p2.maxHp, p2NewHp + healAmt);
+                    p2Log = `【${p2.name}】運轉長生訣，恢復 ${healAmt} 氣血。`;
+                } else if (a2.type === 'gather') {
+                     p2NewMp = Math.min(p2.maxMp, p2NewMp + 15);
+                     p2Log = `【${p2.name}】聚氣凝神，恢復真氣。`;
+                }
+
+                logEntry += p1Log + " " + p2Log;
+
+                // Check deaths and update states
+                const p1FinalStatus = p1NewHp <= 0 ? 'dead' : 'battling';
+                const p2FinalStatus = p2NewHp <= 0 ? 'dead' : 'battling';
+
+                if (p1FinalStatus === 'dead') logEntry += ` 【${p1.name}】重傷倒地！`;
+                if (p2FinalStatus === 'dead') logEntry += ` 【${p2.name}】重傷倒地！`;
+
+                const isBattleOver = p1FinalStatus === 'dead' || p2FinalStatus === 'dead';
+
+                // Transaction-like updates
+                const updates = [];
+                
+                // Update players
+                updates.push(updateDoc(doc(db, getBasePath('rooms'), roomId, 'players', p1.id), {
+                    hp: Math.max(0, p1NewHp), mp: Math.max(0, p1NewMp),
+                    status: isBattleOver ? (p1FinalStatus==='dead' ? 'dead' : 'waiting') : 'battling',
+                    currentBattleId: isBattleOver ? null : battleId
+                }));
+                updates.push(updateDoc(doc(db, getBasePath('rooms'), roomId, 'players', p2.id), {
+                    hp: Math.max(0, p2NewHp), mp: Math.max(0, p2NewMp),
+                    status: isBattleOver ? (p2FinalStatus==='dead' ? 'dead' : 'waiting') : 'battling',
+                    currentBattleId: isBattleOver ? null : battleId
+                }));
+
+                // Update or Delete Battle
+                if (isBattleOver) {
+                    updates.push(deleteDoc(doc(db, getBasePath('rooms'), roomId, 'battles', battleId)));
+                    // Append to room global logs
+                    updates.push(updateDoc(doc(db, getBasePath('rooms'), roomId), {
+                        logs: [...(room.logs || []), `戰報：${p1.name} 與 ${p2.name} 決出勝負！`]
+                    }));
+                } else {
+                    updates.push(updateDoc(doc(db, getBasePath('rooms'), roomId, 'battles', battleId), {
+                        p1Action: null, p2Action: null, // Reset for next turn
+                        turn: battleData.turn + 1,
+                        log: [...(battleData.log || []), logEntry]
+                    }));
+                }
+
+                await Promise.all(updates);
+            };
+
+            if (!room) return <div className="gold-text">加載秘境中...</div>;
+
+            return (
+                <div className="fade-in">
+                    <div className="cultivation-border p-6 mb-6 text-center relative">
+                        <button onClick={handleExit} className="absolute top-4 right-4 text-gray-400 hover:text-white"><i className="fas fa-arrow-left mr-1"></i>離開管理畫面</button>
+                        <h2 className="text-xl text-gray-400 mb-2">秘境憑證 (房間號)</h2>
+                        <div className="text-6xl gold-text font-bold tracking-widest">{room.code}</div>
+                        <p className="mt-4 text-[#7bcea8]">
+                            當前階段：
+                            {room.phase === 'lobby' && '集結中 (等待弟子加入)'}
+                            {room.phase === 'answering' && '修煉期 (答題獲取秘笈)'}
+                            {room.phase === 'battling' && '武林大會 (對戰中)'}
+                            {room.phase === 'finished' && '已結束'}
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Control Panel */}
+                        <div className="cultivation-border p-6 col-span-1 flex flex-col gap-4">
+                            <h3 className="gold-text text-xl border-b border-[#4a4036] pb-2">宗主法案</h3>
+                            
+                            {room.phase === 'lobby' && (
+                                <button onClick={() => updateRoomPhase('answering')} disabled={players.length === 0} className="w-full bg-[#3a5a40] hover:bg-[#4a6a50] py-3 rounded text-white btn-action">
+                                    <i className="fas fa-book-open mr-2"></i>開始修煉 (答題)
+                                </button>
+                            )}
+                            
+                            {room.phase === 'answering' && (
+                                <div className="text-sm text-gray-400 mb-2">
+                                    等待所有弟子完成答題... (若有人斷線可強制進入下一階段)
+                                    <button onClick={() => updateRoomPhase('battling')} className="w-full bg-[#a02020] hover:bg-[#c03030] py-3 rounded text-white btn-action mt-4 border border-red-900">
+                                        <i className="fas fa-khanda mr-2"></i>強制開啟武林大會
+                                    </button>
+                                </div>
+                            )}
+
+                            {room.phase === 'battling' && (
+                                <div className="text-sm text-[#e8c37b] bg-[#3a3026] p-3 rounded border border-[#e8c37b]">
+                                    <i className="fas fa-info-circle mr-2"></i>系統正在自動為弟子進行配對與結算回合。請保持此畫面開啟。
+                                </div>
+                            )}
+
+                            {room.phase !== 'finished' && (
+                                <button onClick={forceFinishRoom} className="w-full bg-[#801010] hover:bg-[#a02020] py-3 rounded text-white btn-action mt-auto border border-red-900">
+                                    <i className="fas fa-power-off mr-2"></i>強制結束秘境 (結算)
+                                </button>
+                            )}
+
+                            {(room.phase === 'finished' || room.phase === 'battling') && (
+                                <button onClick={exportCSV} className="w-full bg-[#2050a0] hover:bg-[#3060b0] py-3 rounded text-white btn-action mt-2">
+                                    <i className="fas fa-file-csv mr-2"></i>匯出成績紀錄 (CSV)
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Player List */}
+                        <div className="cultivation-border p-6 col-span-1 md:col-span-2">
+                            <h3 className="gold-text text-xl border-b border-[#4a4036] pb-2 mb-4 flex justify-between">
+                                <span>已入陣弟子 ({players.length})</span>
+                                {room.phase === 'battling' && <span>存活: {players.filter(p=>p.status!=='dead').length}</span>}
+                            </h3>
+                            <div className="max-h-96 overflow-y-auto pr-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {players.map(p => (
+                                    <div key={p.id} className={`p-3 rounded border ${p.status === 'dead' ? 'border-red-900 bg-red-900/20 opacity-50' : 'border-[#4a4036] bg-[#2a2520]'}`}>
+                                        <div className="font-bold text-lg">{p.name}</div>
+                                        <div className="text-sm text-gray-400 mt-1">
+                                            {room.phase === 'lobby' && "等待中..."}
+                                            {room.phase === 'answering' && `答題: ${p.correctCount || 0} 對`}
+                                            {(room.phase === 'battling' || room.phase === 'finished') && (
+                                                <>
+                                                    <span className={p.status === 'dead' ? 'text-red-400' : 'text-[#7bcea8]'}>
+                                                        {p.status === 'dead' ? '已陣亡' : p.status === 'battling' ? '戰鬥中' : '備戰中'}
+                                                    </span>
+                                                    <div className="mt-1 flex gap-2 text-xs">
+                                                        <span className="text-red-400">血:{Math.floor(p.hp)}</span>
+                                                        <span className="text-blue-400">氣:{Math.floor(p.mp)}</span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                                {players.length === 0 && <div className="text-gray-500 col-span-full text-center">空無一人</div>}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Student Components ---
+        const StudentApp = ({ user, showToast, onBack }) => {
+            const [room, setRoom] = useState(null);
+            const [player, setPlayer] = useState(null); // Local player state from DB
+            const [view, setView] = useState('join'); // join, waiting, game
+
+            useEffect(() => {
+                if (!room || !user) return;
+
+                // Listen to Room Phase changes
+                const unsubscribeRoom = onSnapshot(doc(db, getBasePath('rooms'), room.id), (docSnapshot) => {
+                    if (docSnapshot.exists()) {
+                        const roomData = docSnapshot.data();
+                        setRoom(prev => ({ ...prev, ...roomData }));
+                    } else {
+                        showToast("房間已關閉", "error");
+                        onBack();
+                    }
+                });
+
+                // Listen to Player state
+                const unsubscribePlayer = onSnapshot(doc(db, getBasePath('rooms'), room.id, 'players', user.uid), (docSnapshot) => {
+                    if (docSnapshot.exists()) {
+                        setPlayer({ id: docSnapshot.id, ...docSnapshot.data() });
+                    }
+                });
+
+                return () => { unsubscribeRoom(); unsubscribePlayer(); };
+            }, [room?.id, user]);
+
+            const handleJoin = async (code, name) => {
+                const cleanCode = code.trim();
+                const cleanName = name.trim();
+                if (!cleanCode || !cleanName) return showToast("請輸入完整資料", "error");
+                
+                try {
+                    // 改用獲取所有房間並在前端篩選，避免 Firestore 索引 (Index) 限制導致查詢失敗
+                    const snap = await getDocs(collection(db, getBasePath('rooms')));
+                    const roomDoc = snap.docs.find(doc => doc.data().code === cleanCode);
+                    
+                    if (!roomDoc) return showToast("找不到此房間，請確認房號", "error");
+                    
+                    const roomData = { id: roomDoc.id, ...roomDoc.data() };
+                    if (roomData.phase !== 'lobby') return showToast("房間已開始，無法加入", "error");
+
+                    // Add player to subcollection
+                    await setDoc(doc(db, getBasePath('rooms'), roomData.id, 'players', user.uid), {
+                        name: cleanName,
+                        ...window.BASE_STATS,
+                        correctCount: 0,
+                        status: 'waiting', // waiting, answering, battling, dead
+                        joinedAt: serverTimestamp()
+                    });
+
+                    setRoom(roomData);
+                    setView('game');
+                } catch (err) {
+                    console.error("Join error:", err);
+                    showToast("加入失敗，請重試", "error");
+                }
+            };
+
+            if (view === 'join') {
+                return <StudentJoin onJoin={handleJoin} onBack={onBack} />;
+            }
+
+            if (view === 'game' && room && player) {
+                return (
+                    <div className="fade-in w-full max-w-2xl mx-auto">
+                        <div className="flex justify-between items-center mb-4 text-gray-400 text-sm">
+                            <span>弟子：<span className="gold-text font-bold">{player.name}</span></span>
+                            <span>秘境：{room.code}</span>
+                        </div>
+                        
+                        {room.phase === 'lobby' && (
+                            <div className="cultivation-border p-12 text-center">
+                                <i className="fas fa-spinner fa-spin text-4xl gold-text mb-4"></i>
+                                <h2 className="text-2xl">已進入秘境，靜待宗主開啟考驗...</h2>
+                            </div>
+                        )}
+
+                        {room.phase === 'answering' && (
+                            <StudentAnsweringPhase room={room} player={player} />
+                        )}
+
+                        {room.phase === 'battling' && (
+                            <StudentBattlePhase room={room} player={player} showToast={showToast} />
+                        )}
+
+                        {room.phase === 'finished' && (
+                            <div className="cultivation-border p-12 text-center">
+                                <h2 className="text-3xl gold-text mb-4">歷練結束</h2>
+                                <p className="text-xl mb-4">你的最終狀態：<span className={player.status === 'dead' ? 'text-red-400' : 'text-[#7bcea8]'}>{player.status === 'dead' ? '陣亡' : '存活'}</span></p>
+                                <button onClick={onBack} className="mt-8 bg-[#4a4036] px-6 py-2 rounded text-white border border-[#e8c37b] btn-action">離開秘境</button>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            return null;
+        };
+
+        const StudentJoin = ({ onJoin, onBack }) => {
+            const [code, setCode] = useState('');
+            const [name, setName] = useState('');
+
+            return (
+                <div className="fade-in max-w-md mx-auto cultivation-border p-8">
+                    <h2 className="text-3xl gold-text text-center mb-8">進入秘境</h2>
+                    <input 
+                        className="w-full bg-[#1a1a1a] border border-[#4a4036] rounded p-3 mb-4 text-white text-center text-xl tracking-widest focus:border-[#e8c37b] focus:outline-none"
+                        placeholder="四位數字房號" maxLength="4" type="tel"
+                        value={code} onChange={e => setCode(e.target.value)}
+                    />
+                    <input 
+                        className="w-full bg-[#1a1a1a] border border-[#4a4036] rounded p-3 mb-8 text-white text-center focus:border-[#e8c37b] focus:outline-none"
+                        placeholder="你的道號 (名字)" maxLength="10"
+                        value={name} onChange={e => setName(e.target.value)}
+                    />
+                    <button onClick={() => onJoin(code, name)} className="w-full bg-gradient-to-r from-[#4a4036] to-[#5a5046] border border-[#e8c37b] text-[#e8c37b] py-3 rounded font-bold btn-action mb-4">
+                        踏入傳送陣
+                    </button>
+                    <button onClick={onBack} className="w-full text-gray-500 hover:text-white transition">返回</button>
+                </div>
+            );
+        };
+
+        const StudentAnsweringPhase = ({ room, player }) => {
+            const [questions, setQuestions] = useState([]);
+            const [currentQIndex, setCurrentQIndex] = useState(0);
+            const [isFinished, setIsFinished] = useState(false);
+            const [rewardChoices, setRewardChoices] = useState(null); // Array of 3 manuals when correct
+            
+            useEffect(() => {
+                // Fetch question set
+                const fetchQSet = async () => {
+                    const docSnap = await getDoc(doc(db, getBasePath('questionSets'), room.setId));
+                    if (docSnap.exists()) {
+                        setQuestions(docSnap.data().questions || []);
+                    }
+                };
+                fetchQSet();
+            }, [room.setId]);
+
+            const handleAnswer = async (selectedIndex) => {
+                const q = questions[currentQIndex];
+                const isCorrect = selectedIndex === q.correctIndex;
+
+                if (isCorrect) {
+                    // Show rewards
+                    const shuffled = [...window.MANUALS].sort(() => 0.5 - Math.random());
+                    setRewardChoices(shuffled.slice(0, 3));
+                    // Update correct count in background
+                    await updateDoc(doc(db, getBasePath('rooms'), room.id, 'players', player.id), {
+                        correctCount: (player.correctCount || 0) + 1
+                    });
+                } else {
+                    // Wrong answer, move to next immediately with penalty (visual only for now)
+                    proceedToNextQuestion();
+                }
+            };
+
+            const selectReward = async (manual) => {
+                // Apply manual effects to player
+                let updates = {};
+                if (manual.type === 'hp') { updates.maxHp = player.maxHp + manual.value; updates.hp = player.hp + manual.value; }
+                if (manual.type === 'mp') { updates.maxMp = player.maxMp + manual.value; updates.mp = player.mp + manual.value; }
+                if (manual.type === 'atk') { updates.atk = player.atk + manual.value; }
+                if (manual.type === 'def') { updates.def = player.def + manual.value; }
+                if (manual.type === 'spd') { updates.spd = player.spd + manual.value; }
+                if (manual.skill) { updates.skills = [...(player.skills || []), manual.skill]; }
+
+                await updateDoc(doc(db, getBasePath('rooms'), room.id, 'players', player.id), updates);
+                
+                setRewardChoices(null);
+                proceedToNextQuestion();
+            };
+
+            const proceedToNextQuestion = async () => {
+                if (currentQIndex + 1 < questions.length) {
+                    setCurrentQIndex(currentQIndex + 1);
+                } else {
+                    setIsFinished(true);
+                    // Mark player as ready for battle
+                    await updateDoc(doc(db, getBasePath('rooms'), room.id, 'players', player.id), {
+                        status: 'waiting' // Ready to be paired
+                    });
+                }
+            };
+
+            if (questions.length === 0) return <div className="text-center p-8">讀取卷宗中...</div>;
+
+            if (isFinished) {
+                return (
+                    <div className="cultivation-border p-8 text-center fade-in">
+                        <i className="fas fa-check-circle text-5xl text-[#7bcea8] mb-4"></i>
+                        <h2 className="text-2xl gold-text mb-4">修煉完成！</h2>
+                        <p className="text-gray-400 mb-6">你已完成所有答題並獲取了秘笈強化。<br/>請靜候宗主開啟武林大會。</p>
+                        
+                        <div className="bg-[#1a1a1a] p-4 rounded border border-[#4a4036] inline-block text-left">
+                            <h3 className="gold-text border-b border-[#4a4036] pb-1 mb-2">當前屬性</h3>
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                <div>氣血：{player.maxHp}</div>
+                                <div>真氣：{player.maxMp}</div>
+                                <div>臂力(攻)：{player.atk}</div>
+                                <div>根骨(防)：{player.def}</div>
+                                <div>身法(閃)：{player.spd}</div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const q = questions[currentQIndex];
+
+            return (
+                <div className="fade-in relative">
+                    {/* Main Question UI */}
+                    <div className={`cultivation-border p-6 transition duration-300 ${rewardChoices ? 'filter blur-sm opacity-50 pointer-events-none' : ''}`}>
+                        <div className="flex justify-between items-center mb-4 text-gray-400 border-b border-[#3a3026] pb-2">
+                            <span>修煉進度：{currentQIndex + 1} / {questions.length}</span>
+                        </div>
+                        <h3 className="text-xl md:text-2xl mb-8 leading-relaxed">{q.question}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {q.options.map((opt, idx) => (
+                                <button 
+                                    key={idx} 
+                                    onClick={() => handleAnswer(idx)}
+                                    className="bg-[#2a2520] hover:bg-[#3a3026] border border-[#4a4036] p-4 rounded text-left btn-action group"
+                                >
+                                    <span className="inline-block w-8 h-8 rounded-full bg-[#1a1a1a] text-center leading-8 mr-3 text-gray-500 group-hover:text-[#e8c37b]">{String.fromCharCode(65+idx)}</span>
+                                    {opt}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Reward Modal Overlays */}
+                    {rewardChoices && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 fade-in">
+                            <div className="bg-black bg-opacity-90 absolute inset-0"></div>
+                            <div className="relative z-20 text-center w-full px-4">
+                                <h2 className="text-3xl gold-text mb-2">答對了！</h2>
+                                <p className="mb-8 text-gray-300">機緣降臨，請選擇一本秘笈：</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    {rewardChoices.map(manual => (
+                                        <button 
+                                            key={manual.id} 
+                                            onClick={() => selectReward(manual)}
+                                            className="cultivation-border p-4 hover:border-[#e8c37b] hover:shadow-[0_0_15px_rgba(232,195,123,0.3)] transition bg-[#1a1a1a] flex flex-col items-center btn-action"
+                                        >
+                                            <i className={`fas ${manual.icon} text-4xl mb-3 text-[#e8c37b]`}></i>
+                                            <h4 className="font-bold text-lg mb-2">{manual.name}</h4>
+                                            <p className="text-xs text-gray-400">{manual.desc}</p>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const StudentBattlePhase = ({ room, player, showToast }) => {
+            const [battle, setBattle] = useState(null);
+            const [opponent, setOpponent] = useState(null);
+            const [actionSelected, setActionSelected] = useState(false);
+
+            useEffect(() => {
+                if (!player.currentBattleId) {
+                    setBattle(null);
+                    setOpponent(null);
+                    setActionSelected(false);
+                    return;
+                }
+
+                // Listen to current battle doc
+                const unsubscribe = onSnapshot(doc(db, getBasePath('rooms'), room.id, 'battles', player.currentBattleId), async (docSnap) => {
+                    if (docSnap.exists()) {
+                        const bData = docSnap.data();
+                        setBattle({ id: docSnap.id, ...bData });
+                        
+                        // Check if I already submitted action for this turn
+                        const isP1 = bData.p1Id === player.id;
+                        setActionSelected(isP1 ? !!bData.p1Action : !!bData.p2Action);
+
+                        // Fetch opponent latest stats
+                        const oppId = isP1 ? bData.p2Id : bData.p1Id;
+                        const oppDoc = await getDoc(doc(db, getBasePath('rooms'), room.id, 'players', oppId));
+                        if(oppDoc.exists()) setOpponent({id: oppDoc.id, ...oppDoc.data()});
+                    }
+                });
+
+                return () => unsubscribe();
+            }, [player.currentBattleId, room.id]);
+
+            const submitAction = async (actionType) => {
+                if (!battle) return;
+                
+                // Pre-check MP cost
+                if (actionType === 'ultimate' && player.mp < 20) return showToast("真氣不足！", "error");
+                if (actionType === 'heal' && player.mp < 10) return showToast("真氣不足！", "error");
+
+                // Deduct MP optimistically/locally before sending
+                let newMp = player.mp;
+                if (actionType === 'ultimate') newMp -= 20;
+                if (actionType === 'heal') newMp -= 10;
+                
+                if (newMp !== player.mp) {
+                    await updateDoc(doc(db, getBasePath('rooms'), room.id, 'players', player.id), { mp: newMp });
+                }
+
+                const actionPayload = { type: actionType };
+                const isP1 = battle.p1Id === player.id;
+                
+                try {
+                    await updateDoc(doc(db, getBasePath('rooms'), room.id, 'battles', battle.id), {
+                        [isP1 ? 'p1Action' : 'p2Action']: actionPayload
+                    });
+                    setActionSelected(true);
+                } catch (e) {
+                    showToast("出招失敗", "error");
+                }
+            };
+
+            if (player.status === 'dead') {
+                return (
+                    <div className="cultivation-border p-12 text-center fade-in">
+                        <i className="fas fa-skull text-6xl blood-text mb-4"></i>
+                        <h2 className="text-3xl text-gray-300">勝敗乃兵家常事</h2>
+                        <p className="text-gray-500 mt-2">你已在比武中重傷退場，請觀摩其他同門的戰鬥。</p>
+                    </div>
+                );
+            }
+
+            if (!battle || !opponent) {
+                return (
+                    <div className="cultivation-border p-12 text-center fade-in">
+                        <i className="fas fa-yin-yang fa-spin text-4xl text-gray-500 mb-4"></i>
+                        <h2 className="text-2xl gold-text">調息中...</h2>
+                        <p className="text-gray-400 mt-2">等待宗主為您配對下一位對手。</p>
+                    </div>
+                );
+            }
+
+            // --- Battle UI Render ---
+            return (
+                <div className="fade-in">
+                    {/* Log Area */}
+                    <div className="bg-[#1a1a1a] border border-[#3a3026] rounded p-3 mb-4 h-32 overflow-y-auto text-sm font-mono text-gray-300 flex flex-col-reverse">
+                        {battle.log && battle.log.length > 0 ? (
+                            battle.log.map((l, i) => <div key={i} className="mb-1 pb-1 border-b border-[#2a2520]">{l}</div>)
+                        ) : (
+                            <div className="text-center italic text-gray-500 mt-10">雙方對峙，殺氣騰騰...</div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 relative">
+                        {/* VS badge */}
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-[#e8c37b] rounded-full border-4 border-[#121212] flex items-center justify-center font-bold text-black shadow-[0_0_15px_rgba(232,195,123,0.5)]">
+                            VS
+                        </div>
+
+                        {/* Player Stats */}
+                        <div className="cultivation-border p-4 bg-gradient-to-br from-[#1a1a1a] to-[#2a2520]">
+                            <h3 className="gold-text font-bold text-lg mb-2 text-center">{player.name} (你)</h3>
+                            <div className="mb-2">
+                                <div className="flex justify-between text-xs mb-1"><span>氣血</span><span>{Math.floor(player.hp)}/{player.maxHp}</span></div>
+                                <div className="health-bar-container"><div className="health-bar" style={{width: `${Math.max(0, (player.hp/player.maxHp)*100)}%`}}></div></div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-xs mb-1"><span>真氣</span><span>{Math.floor(player.mp)}/{player.maxMp}</span></div>
+                                <div className="health-bar-container"><div className="mp-bar" style={{width: `${Math.max(0, (player.mp/player.maxMp)*100)}%`}}></div></div>
+                            </div>
+                        </div>
+
+                        {/* Opponent Stats */}
+                        <div className="cultivation-border p-4 bg-gradient-to-bl from-[#1a1a1a] to-[#3a1515]">
+                            <h3 className="text-red-400 font-bold text-lg mb-2 text-center">{opponent.name}</h3>
+                            <div className="mb-2">
+                                <div className="flex justify-between text-xs mb-1"><span>氣血</span><span>{Math.floor(opponent.hp)}/{opponent.maxHp}</span></div>
+                                <div className="health-bar-container"><div className="health-bar" style={{width: `${Math.max(0, (opponent.hp/opponent.maxHp)*100)}%`}}></div></div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-xs mb-1"><span>真氣</span><span>{Math.floor(opponent.mp)}/{opponent.maxMp}</span></div>
+                                <div className="health-bar-container"><div className="mp-bar" style={{width: `${Math.max(0, (opponent.mp/opponent.maxMp)*100)}%`}}></div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action Controls */}
+                    <div className="mt-6 cultivation-border p-4 bg-[#1a1a1a]">
+                        <h4 className="text-center mb-3 text-sm text-gray-400">第 {battle.turn} 回合行動</h4>
+                        {actionSelected ? (
+                            <div className="text-center p-4 text-[#e8c37b]">已決定招式，等待對手行動...</div>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-3">
+                                <button onClick={() => submitAction('attack')} className="bg-[#4a4036] hover:bg-[#5a5046] p-3 rounded border border-gray-600 btn-action flex flex-col items-center">
+                                    <i className="fas fa-hand-fist mb-1 text-gray-300"></i><span>普攻</span>
+                                </button>
+                                <button onClick={() => submitAction('defend')} className="bg-[#3a4a5a] hover:bg-[#4a5a6a] p-3 rounded border border-gray-600 btn-action flex flex-col items-center">
+                                    <i className="fas fa-shield-halved mb-1 text-gray-300"></i><span>防禦</span>
+                                </button>
+                                <button onClick={() => submitAction('dodge')} className="bg-[#3a5a4a] hover:bg-[#4a6a5a] p-3 rounded border border-gray-600 btn-action flex flex-col items-center">
+                                    <i className="fas fa-wind mb-1 text-gray-300"></i><span>閃避</span>
+                                </button>
+                                
+                                <button onClick={() => submitAction('gather')} className="bg-[#2a2540] hover:bg-[#3a3550] p-3 rounded border border-blue-800 btn-action flex flex-col items-center text-blue-300">
+                                    <i className="fas fa-seedling mb-1"></i><span>聚氣 (+15)</span>
+                                </button>
+
+                                {player.skills?.includes('ultimate') && (
+                                    <button onClick={() => submitAction('ultimate')} disabled={player.mp < 20} className="bg-gradient-to-br from-red-900 to-red-700 hover:from-red-800 hover:to-red-600 p-3 rounded border border-red-500 btn-action flex flex-col items-center text-white col-span-2 shadow-[0_0_10px_rgba(255,0,0,0.3)]">
+                                        <i className="fas fa-burst mb-1"></i><span>萬劍歸宗 (必殺)</span>
+                                        <span className="text-[10px] text-red-200 mt-1">-20 真氣</span>
+                                    </button>
+                                )}
+
+                                {player.skills?.includes('heal') && (
+                                    <button onClick={() => submitAction('heal')} disabled={player.mp < 10} className="bg-gradient-to-br from-green-900 to-green-700 hover:from-green-800 hover:to-green-600 p-3 rounded border border-green-500 btn-action flex flex-col items-center text-white">
+                                        <i className="fas fa-briefcase-medical mb-1"></i><span>療傷</span>
+                                        <span className="text-[10px] text-green-200 mt-1">-10 真氣</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
